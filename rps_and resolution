@@ -1,0 +1,15 @@
+climate<-raster::getData("worldclim", var="bio",res=2.5)
+
+
+futbio<-raster::getData('CMIP5', var='bio', res=2.5, rcp=85, model='MI', year=50)
+#change name same as trained environmental variables 
+# 'https://biogeo.ucdavis.edu/data/climate/cmip5/2_5m/mi26bi50.zip'
+names(futbio)<-names(climate)
+# create the folder with same name of initial worldclim data
+futbi_toSave<-stack(futbio)
+folder_name<- 'Bio_Res2.5_Rcp85Y50'
+dir.create(folder_name, showWarnings = TRUE, recursive = FALSE, mode = "0777")
+# writeRaster(futbi_toSave, filename=names(futbi_toSave), bylayer=TRUE,format="raster")
+writeRaster(futbi_toSave, filename=file.path(paste0(getwd(),'/',folder_name),names(futbi_toSave)), bylayer=TRUE,format="raster")
+
+
