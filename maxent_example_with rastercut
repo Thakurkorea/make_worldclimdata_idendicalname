@@ -1,0 +1,211 @@
+library(dismo)
+library(rJava)
+
+# normalizing function 
+min_max_norm<-function(x){(x-min(x))/(max(x)-min(x))}
+
+# # # setting the raster folder and file arrangement
+# # # initial map is set in EPSG:4326 - WGS 84 and projection is not changed here
+# getwd() #know working directory
+# setwd("E:/MAxent for invassive (?????????)") # set working directory
+# # # lets' change the file to .grd (raster) format or .asc (.ascii)
+# fl_name<-"Maxent_pred"    # output data folder
+# in_path<-'E:/MAxent for invassive (?????????)/wc2.1_10m_bio_evl/'  # data folder
+ # out_path<-paste(in_path,fl_name,collapse = NULL) # output folder name
+# if(file.exists('out_path')) {unlink('out_path', recursive = TRUE)}
+# dir.create(out_path)    # make new directory folder
+# filenames <- list.files(path = file.path(in_path), pattern="*.tif")
+# length(filenames)   # check no of files in folder
+# base_map<-raster(ncol = 2160, nrow = 1080, ext=extent(-180,  180,-90, 90))  # use gistook and take reference extent
+# for (lr in filenames)
+# {print(lr)
+#   r_tif<- raster(file.path(in_path,lr))
+#   r_tif<-resample( r_tif,base_map)
+#   writeRaster(r_tif,filename = file.path(out_path,lr),format= 'raster',overwrite=TRUE)  # format can be changed as required
+# }
+# # to know the details about formats see with writeFormats() function
+# #################################
+# # set forecasting path and map for south korea 
+# fl_name1<-"Maxent_pred_korea"    # output data folder
+# in_path<-'E:/MAxent for invassive (?????????)/wc2.1_10m_bio_evl/'  # data folder fl_name is obtained from already set ascii file 
+# in_path<-paste(in_path,fl_name,collapse =NULL)
+# out_path<-paste(in_path,fl_name1,collapse = NULL) # output folder name
+# if(file.exists('out_path')) {unlink('out_path', recursive = TRUE)}
+# dir.create(out_path)    # make new directory folder
+# filenames <- list.files(path = file.path(in_path), pattern="*.grd")
+# length(filenames)   # check no of files in folder
+# base_map<-raster(ncol = 270, nrow =290, ext=extent(125.33, 129.83,34.0, 38.833))  # use gistool and take reference extent
+# for (lr in filenames)
+# {print(lr)
+#   r_tif<- raster(file.path(in_path,lr))
+#   r_tif<-resample( r_tif,base_map)
+#   writeRaster(r_tif,filename = file.path(out_path,lr),format= 'raster',overwrite=TRUE)  # format can be changed as required 
+# }
+
+
+
+#let's run maxent
+
+# NOT RUN {
+# }
+# NOT RUN {
+# test if you can use maxent 
+maxent()
+
+if (maxent()) {
+  
+  # get predictor variables
+  # fnames <- list.files(path=paste(system.file(package="dismo"), '/ex', sep=''), 
+  #                      pattern='grd', full.names=TRUE )
+  fnames<-list.files(path= "E:/MAxent for invassive (생태원)/wc2.1_10m_bio_evl/ Maxent_pred", 
+                     pattern='grd', full.names=TRUE )
+  
+  
+  
+ # fnames <- getData("worldclim",var="bio",res=10) # bio climatic data
+  #alt <- getData("worldclim", var="alt", res=10) # bio altitude data
+  predictors <- stack(fnames)
+  #unlist(stack(fnames,alt))
+  # plot(predictors)
+  #plot(alt)
+  
+  # file with presence points
+  # occurence <- paste(system.file(package="dismo"), '/ex/alltest.csv', sep='')
+  # occurance<-read.csv(file,header=TRUE, sep=',')
+  occurance<-read.table("C:/Users/IT/Documents/KakaoTalk Downloads/Oryctolagus_cuniculus1_csv.csv",header=TRUE, sep=',') [,-1]
+  nms<-names(occurance)
+  occ<-occurance[,c(nms[1],nms[2])] 
+  dim(occ)
+  ##################################################################
+  species<-c("Deer",'Nutria',"muskrat")
+  length(species)
+  print(species) # "its time to change species file data 
+  #deer
+  occurance<- list.files(path="E:/MAxent for invassive (?????????)/Deer" , 
+  pattern='csv', full.names=TRUE ) #file name
+ # Muskrat
+   occurance<- list.files(path="E:/MAxent for invassive (?????????)/Muskart" , 
+                         pattern='csv', full.names=TRUE ) #file name
+  #nutria
+   occurance<- list.files(path="E:/MAxent for invassive (생태원)/Nutria" , 
+                        pattern='csv', full.names=TRUE ) #file name
+   # scan("NAS-Data-Download_USA.csv","") # check and scan data in file 
+   occ<-{}
+  print(occurance)
+   length(occurance)
+  for (fl in occurance) {
+    
+  # occurance<-read.table(fl,header=TRUE, sep=',')   # if error go for readcsv
+  occurance<-read.csv(fl,header=TRUE,sep=',')
+  
+  occurance<-occurance[!is.na(occurance$Long)&!is.na(occurance$Lat),] # remove na-value
+  print(dim(occurance)) 
+  track<- subset(occurance, select = c(Long,Lat))
+  occ<-rbind(occ,track)
+  # print(dim(occ))
+  }
+  ########################################################
+    
+  # occ <- read.table(occurence, header=TRUE, sep=',')[,-1]
+  # write.csv(occ,"Muskrat.csv")
+  # witholding a 20% sample for testing 
+  fold <- kfold(occ, k=5)
+  occtest <- occ[fold == 1, ]
+  occtrain <- occ[fold != 1, ]
+  
+  # fit model, biome is a categorical variable
+  #me <- maxent(predictors, occtrain, factors='biome',silent='TRUE')
+  me <- maxent(predictors, occtrain, silent='TRUE')
+  # see the maxent results in a browser:
+  me
+  # use "args"
+  #me2 <- maxent(predictors, occtrain, factors='biome', args=c("-J", "-P"))
+  
+  # plot showing importance of each variable
+  plot(me)
+  ###############################################################
+  # response curves
+  response(me,rug=TRUE)
+  nm<-names(predictors)
+  response(me,var=nm[3],rug=TRUE)  # only selected variable
+  list(response(me)) # can see the data in table 
+  #nlayers(predictors)
+  #names(predictors)
+  #bio_one<-response(me,{'bio1'}) #single variable
+  #list(bio_one)
+  # predicting to world map
+  r <- predict(me, predictors) 
+  plot(r)
+  points(occ)
+  #testing
+  # background data
+  bg <- randomPoints(predictors, 100000)
+  
+  #simplest way to use 'evaluate'
+  e1 <- evaluate(me, p=occtest, a=bg, x=predictors)
+  
+  # alternative 1
+  # extract values
+  pvtest <- data.frame(extract(predictors, occtest))
+  avtest <- data.frame(extract(predictors, bg))
+  
+  e2 <- evaluate(me, p=pvtest, a=avtest)
+  # threshold value range 
+  e2@t[which(e2@TPR+e2@TNR==max(e2@TPR+e2@TNR))]
+  #Tss (true skill statistic)
+  mat <- e2@confusion[which(e2@TPR+e2@TNR==max(e2@TPR+e2@TNR)), ]
+  num <- (mat[1]*mat[4])-(mat[3]*mat[2])
+  den <- (mat[1]+mat[2])*(mat[3]+mat[4])
+  tss <- num/den
+  threshold(e2) # find kappa value
+  ###########################################
+  
+  
+  # alternative 2 
+  # predict to testing points 
+  testp <- predict(me, pvtest) 
+  head(testp)
+  testa <- predict(me, avtest) 
+  
+  e3 <- evaluate(p=testp, a=testa)
+  e3
+  threshold(e3)
+  
+  plot(e3, 'ROC')
+}
+# }
+# NOT RUN {
+# }
+
+#for (i in 1:nlayers(predictors)){
+ # dt<=response(me,names(predictors)[1])
+#  list(dt)
+#}
+
+# predict to entire dataset
+fnames<-list.files(path= "E:/MAxent for invassive (?????????)/wc2.1_10m_bio_evl/ Maxent_pred Maxent_pred_korea", 
+                   pattern='grd', full.names=TRUE )   # set for korean extent
+
+
+
+# fnames <- getData("worldclim",var="bio",res=10) # bio climatic data
+#alt <- getData("worldclim", var="alt", res=10) # bio altitude data
+predictors <- stack(fnames)
+#unlist(stack(fnames,alt))
+# plot(predictors)
+r <- predict(me, predictors) 
+
+# # with some options:
+#  r <- predict(me, predictors, args=c("outputformat=raw"), progress='text', 
+#      filename='maxent_prediction.grd')
+r[is.na(r@data@values)] <- 0
+r@data@values<-min_max_norm(r@data@values)
+
+plot(r); axis(1, 125:130)
+
+# ## masking the data of Maxent GUI output data to Korean Boundary
+# base_map<-raster(ncol = 270, nrow =290, ext=extent(125.33, 129.83,34.0, 38.833))
+# aa<-raster("E:/MAxent for invassive (?????????)/wc2.1_10m_bio_evl/MAxent_app_trial/Deer.grd")
+# bb<-resample(aa,base_map)
+# plot(bb)
+
