@@ -1,0 +1,129 @@
+# First, let us load the following packages:
+getwd()
+# setwd("E:/Initial_data_notebook_0412/Invassive Species")
+library(dismo)
+library(maps)
+library(raster)
+library(installr)
+library(nlme)
+library(rgbif)
+# https://www.r-bloggers.com/2021/03/downloading-and-cleaning-gbif-data-with-r/
+# install.Rtools()
+# let's download the gbif data with key variable names
+#????????????,????????????, ?????????,  ??????, ???????????????, ???????????????, ?????????????????????, ????????????, ??????????????????, ?????????, ???????????????
+animal<-c('Deer','Nutria','Muskrat','Raccoon','Edible dormouse' , 'Little mongoose', 
+         'Eastern gray squirrel',	'Eurasian beaver','American mink','European rabbit', 'European polecat')
+
+sci_names<-c('Cervidae','Myocastor coypus','Ondatra zibethicus','Procyon lotor','Glis glis','Herpestes javanicus', 'Sciurus carolinensis',
+             
+             'Castor fiber','Neogale vison','Oryctolagus cuniculus',
+             'Mustela putorius')  # scientific names 
+anm_scin<-data.frame(animal,sci_names)            
+             
+d<-dim(anm_scin)
+for (i in 1:d[1]){
+# guara<-gbif(anm_scin[i,2], download=T,geo=T,start=1,end=100000,nrecs=3000,ntries=3) # fit with 1 to 11 species 2 nd row is fixed for search 
+# guara<-gbif('Cervus nippon', download=T,geo=T,removeZeros=FALSE,start=1,end=10000,nrecs=3000)  # fit with sea mammal
+  ###########or download using occ_data from rgbif package############
+guara<-occ_data(scientificName = anm_scin[i,2], hasCoordinate = TRUE, limit = 20000)
+print(i)
+  data_S<-guara$data[ , c("decimalLongitude", "decimalLatitude", "individualCount", 
+                          "occurrenceStatus", "coordinateUncertaintyInMeters", "institutionCode")]  # selecting required features 
+  data_S<-data.frame(anm_scin[i,1],data_S)  # making dataframe with species 
+  
+write.csv(data_S,paste0('Species_',anm_scin[i,1],'.csv')) # save each species data in different foulder 
+}
+
+# guara<-read.csv("Sika_deer_from_gbif.csv",header = TRUE)
+
+# guara<-gbif("Chrysocyon","brachyurus",download=T,geo=T)
+plot(guara$lon,guara$lat,col="red",pch=19,xlab="Longitude",ylab="Latitude")
+map(add=T)
+# # plot within extent 
+# guara<-guara[which(guara$lon > -90 & guara$lon < -25),]  # data within extent 
+# guara<-guara[which(guara$lat > -45 & guara$lat < 0),]
+# plot(guara$lon,guara$lat,xlim=c(-90,-25),ylim=c(-45,0),col="red",pch=19,xlab="Longitude",ylab="Latitude")
+# map(add=T)
+# let us download the shapefile of of certain country A,
+my0 = raster::getData('GADM', country="kr", level=2)
+# my0 <- getData('GADM', country="BRA", level=0)
+plot(my0)
+# downl laod bioclimatic variables from worldclim
+climate<-raster::getData("worldclim", var="bio",res=2.5)
+
+plot(climate$bio1, main="Annual Mean Temperature") # example plot
+#We can now use the MaxEnt modelling.
+guarapoints=guara[,c('lon','lat')]
+guarapoints<-na.omit(guarapoints) #remove_navalue
+# Now let us divide this file into 5 parts. 75% of the data will be used to train the model (to create the mode), 
+# and 25% will be used to test if it is a good model.
+group <- kfold(guarapoints,5)
+pres_train <- guarapoints[group!=1,]
+pres_test <- guarapoints[group==1,]
+## crop the extent for training data 
+# ext = extent(-90,-25,-45,0)
+# pred=crop(climate,ext)
+# xm <- maxent(pred,pres_train)
+#global_extent maxent analysis 
+pred<-climate
+xm <- maxent(pred,pres_train)
+plot(xm)
+response(xm)
+ext1<-pred@extent
+ext<-my0@bbox
+# randomPoints() to create 10000 pseudo-absences backgroud . 
+# Then, we will also divide these data into 5 parts.
+backg = randomPoints(pred, n=10000, ext=ext1, extf=1.25)
+colnames(backg) <- c("lon","lat")
+group=kfold(backg, 5)
+backg_train <- backg[group!=1,]
+backg_test <- backg[group==1,]
+# let us test the model
+e = evaluate(pres_test, backg_test, xm, pred)
+# threshold value range 
+thrs<-e@t[which(e@TPR+e@TNR==max(e@TPR+e@TNR))]
+thold<-thrs
+#Tss (true skill statistic)
+Auc<-e@auc
+mat <- e@confusion[which(e@TPR+e@TNR==max(e@TPR+e@TNR)), ]
+num <- (mat[1]*mat[4])-(mat[3]*mat[2])
+den <- (mat[1]+mat[2])*(mat[3]+mat[4])
+tss <- num/den           #Tss
+kappa<-threshold(e)['kappa'] # find kappa value
+test_dt<-data.frame(c(Auc,tss,kappa,thrs))
+names(test_dt)<-c('Auc','tss','kappa','thrs')
+print(test_dt)
+plot(e,'ROC')
+##################current scenario #########################
+# p_world <- predict(pred, xm, progress='')
+# plot(p_world, main="Maxent, raw values - Present_world")
+# points(guarapoints) 
+##############let us predict within required extent ############################
+p <- predict(pred, xm, ext=ext, progress='')
+Tred_cells<-table(p@data@values>thold)["TRUE"] # no of cell above the threshold with current scenario
+plot(p, main="Maxent, raw values - Present")
+exp_r_map<-plot(my0,add=T)
+
+# prediction with future data
+futbio<-raster::getData('CMIP5', var='bio', res=2.5, rcp=85, model='MI', year=70)
+#change name same as trained environmental variables 
+# 'https://biogeo.ucdavis.edu/data/climate/cmip5/2_5m/mi26bi50.zip'
+names(futbio)<-names(climate)
+# create the folder with same name of initial worldclim data
+futbi_toSave<-stack(futbio)
+folder_name<- 'Bio_Res2.5_Rcp85Y70'
+dir.create(folder_name, showWarnings = TRUE, recursive = FALSE, mode = "0777")
+# writeRaster(futbi_toSave, filename=names(futbi_toSave), bylayer=TRUE,format="raster")
+writeRaster(futbi_toSave, filename=file.path(paste0(getwd(),'/',folder_name),names(futbi_toSave)), bylayer=TRUE,format="raster")
+
+
+plot(futbio$bio1, main="Annual Mean Temperature") # example plot
+# ext_korea = extent(124,130,32,40)
+pfut<-predict(futbio, xm, ext=ext, progress='')
+plot(pfut, main="Maxent, raw values - Future")
+exp_r_map<-plot(my0,add=T)
+writeRaster(pfut,'sikadeer.tif')
+# h<-hist(pfut@data@values)
+Pred_cells<-table(pfut@data@values>thold)["TRUE"] # no of cell above the threshold with future scenario
+change_incell<-(-Tred_cells+Pred_cells)/Tred_cells*100
+print(change_incell)
